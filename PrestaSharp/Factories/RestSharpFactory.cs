@@ -8,21 +8,34 @@ using System.Xml.Linq;
 using Bukimedia.PrestaSharp.Deserializers;
 using Bukimedia.PrestaSharp.Entities;
 using Bukimedia.PrestaSharp.Serializers;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using RestSharp;
+using RestSharp.Serializers.NewtonsoftJson;
 
 namespace Bukimedia.PrestaSharp.Factories
 {
+
+    public enum ResposeFormatType
+    {
+        XML,
+        JSON
+
+    }
+
     public abstract class RestSharpFactory
     {
         protected string BaseUrl { get; set; }
         protected string Account { get; set; }
         protected string Password { get; set; }
+        protected ResposeFormatType ResponseType { get; set; }
 
-        public RestSharpFactory(string baseUrl, string account, string password)
+        public RestSharpFactory(string baseUrl, string account, string password, ResposeFormatType responseType = ResposeFormatType.XML)
         {
             BaseUrl = baseUrl;
             Account = account;
             Password = password;
+            ResponseType = responseType;
         }
 
         #region Privates
@@ -38,21 +51,29 @@ namespace Bukimedia.PrestaSharp.Factories
             request.XmlSerializer = new PrestaSharpSerializer();
             var serialized = string.Empty;
             foreach (var entity in entities)
-                serialized += ((PrestaSharpSerializer) request.XmlSerializer).PrestaSharpSerialize(entity);
+                serialized += ((PrestaSharpSerializer)request.XmlSerializer).PrestaSharpSerialize(entity);
             serialized = "<prestashop>\n" + serialized + "\n</prestashop>";
             request.AddParameter("application/xml", serialized, ParameterType.RequestBody);
         }
 
         private void AddBody(RestRequest request, PrestaShopEntity entity)
         {
-            AddBody(request, new List<PrestaShopEntity> {entity});
+            AddBody(request, new List<PrestaShopEntity> { entity });
         }
 
         private void AddHandlers(RestClient client)
         {
             client.ClearHandlers();
-            client.AddHandler("text/xml", () => new PrestaSharpDeserializer());
-            client.AddHandler("text/html", () => new PrestaSharpTextErrorDeserializer());
+            if (ResponseType == ResposeFormatType.XML)
+            {
+                client.AddHandler("text/xml", () => new PrestaSharpDeserializer());
+                client.AddHandler("text/html", () => new PrestaSharpTextErrorDeserializer());
+            }
+            else
+            {
+                client.UseNewtonsoftJson();
+            }
+
         }
 
         #endregion
@@ -117,7 +138,7 @@ namespace Bukimedia.PrestaSharp.Factories
             var response = client.Execute<T>(request);
             var xDcoument = XDocument.Parse(response.Content);
             var ids = (from doc in xDcoument.Descendants(rootElement)
-                select long.Parse(doc.Attribute("id").Value)).ToList();
+                       select long.Parse(doc.Attribute("id").Value)).ToList();
             return ids;
         }
 
@@ -129,15 +150,17 @@ namespace Bukimedia.PrestaSharp.Factories
             var response = client.Execute(request);
             CheckResponse(response, request);
             return response.RawBytes;
-        }        
+        }
 
         protected async Task<T> ExecuteAsync<T>(RestRequest request) where T : new()
         {
+
             var client = new RestClient(BaseUrl);
             AddWsKey(request);
             AddHandlers(client);
             var response = await client.ExecuteTaskAsync<T>(request);
             CheckResponse(response, request);
+
             return response.Data;
         }
 
@@ -321,10 +344,24 @@ namespace Bukimedia.PrestaSharp.Factories
         protected RestRequest RequestForFilter(string resource, string display, Dictionary<string, string> filter,
             string sort, string limit, string rootElement)
         {
-            var request = new RestRequest
+            var request = new RestRequest();
             {
-                Resource = resource,
-                RootElement = rootElement
+                if (ResponseType == ResposeFormatType.XML)
+                {
+                    request = new RestRequest()
+                    {
+                        Resource = resource,
+                        RootElement = rootElement
+                    };
+                }
+                else if (ResponseType == ResposeFormatType.JSON)
+                {
+                    request = new RestRequest()
+                    {
+                        Resource = resource
+                    };
+                }
+
             };
             if (display != null) request.AddParameter("display", display);
             if (filter != null)
@@ -353,7 +390,7 @@ namespace Bukimedia.PrestaSharp.Factories
         {
             var fileStream = new FileStream(imagePath, FileMode.Open, FileAccess.Read);
             var buffer = new byte[fileStream.Length];
-            fileStream.Read(buffer, 0, (int) fileStream.Length);
+            fileStream.Read(buffer, 0, (int)fileStream.Length);
             fileStream.Close();
             return buffer;
         }

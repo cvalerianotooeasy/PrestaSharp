@@ -14,8 +14,8 @@ namespace Bukimedia.PrestaSharp.Factories
         protected override string singularEntityName { get { return "order_detail"; } }
         protected override string pluralEntityName { get { return "order_details"; } }
 
-        public OrderDetailFactory(string BaseUrl, string Account, string SecretKey) 
-            : base(BaseUrl, Account, SecretKey)
+        public OrderDetailFactory(string BaseUrl, string Account, string SecretKey, ResposeFormatType ResposeFormatType) 
+            : base(BaseUrl, Account, SecretKey, ResposeFormatType)
         {
         }
     }
